@@ -1,85 +1,116 @@
-const { Router } = require('express');
+const { Router } = require("express");
 
 const router = Router();
 
-const db = require('../conf');
+const bodyParser = require("body-parser");
 
-/* GET index page. */
-router.get('/', (req, res) => {
-  res.render('index', {
-    title: 'Express'
-  });
+router.use(bodyParser.json());
+router.use(bodyParser.urlencoded({ extended: false }));
+
+const db = require("../conf");
+
+//  1. GET (light) - Récupération de quelques champs spécifiques (id, names, dates, etc...)
+router.get("/light-quotes", (req, res) => {
+    db.query("SELECT `author_id`, `quotetext` FROM quote", (err, results) => {
+        if (err) {
+            res.status(500).send("Can't get 'light' quotes !");
+        } else {
+            res.status(200).send(results);
+        }
+    });
 });
 
-// Tu es libre du sujet de ton application. En revanche, il faudra que ta ou tes tables contiennent obligatoirement des champs avec le type suivant :
+//  2. GET - Récupération de l'ensemble des données de ta table
 
-//     Un champs type "texte"  // citation + auteur name + auteur prenom + id
+//  GET - Récupération d'un ensemble de données en fonction de certains filtres :
+//  3. Un filtre "contient ..." (ex: nom contenant la chaîne de caractère 'wcs')
+//  4. Un filtre "commence par ..." (ex: nom commençant par 'campus')
+//  5. Un filtre "supérieur à ..." (ex: date supérieure à 18/10/2010)
 
-//     Un champs type "date" // date time ajout
+//  6. GET - Récupération de données ordonnées (ascendant, descendant)L'ordre sera passé en tant que paramètre de la route
 
-//     Un champs type "booléen" // validated true/false
-
-//     Un champs type "entier" // note 1-10
-
-// Liste des fonctionnalités
-
-// Voici les fonctionnalités auxquelles ton API devra répondre :
-
-//     GET - Récupération de l'ensemble des données de ta table
-
-// router.get('/quotes', (req, res) => {
-//   db.query('SELECT  `timestamp`, `author_id`, `quotetext`, `validated`, `rank` FROM quote', (err, results) => {
-//     if (err) {
-//       res.status(500).send("Can't get quotes !");
-//     } else {
-//       res.status(200).send(results);
-//     }
-//   });
-// });
-
-//     GET (light) - Récupération de quelques champs spécifiques (id, names, dates, etc...)
-router.get('/light-quotes', (req, res) => {
-  db.query('SELECT `author_id`, `quotetext` FROM quote', (err, results) => {
-    if (err) {
-      res.status(500).send("Can't get 'light' quotes !");
-    } else {
-      res.status(200).send(results);
-    }
-  });
+router.get("/quotes", (req, res) => {
+    let slqReq = "SELECT `id`, `timestamp`, `author_id`, `quotetext`, `validated`, `rank` FROM quote";
+    // filters
+    if (req.query.contains) slqReq += ` WHERE quotetext LIKE '%${req.query.contains}%'`;
+    if (req.query.start) slqReq += ` WHERE quotetext LIKE '${req.query.start}%'`;
+    if (req.query.older) slqReq += ` WHERE timestamp < DATE(${req.query.older})`;
+    // sorting
+    if (req.query.sort) slqReq += ` ORDER BY ${req.query.sort.split(",").join(" ")}`;
+    db.query(slqReq, (err, results) => {
+        if (err) {
+            res.status(500).send("Can't get quotes !");
+        } else {
+            res.status(200).send(results);
+        }
+    });
 });
 
-//     GET - Récupération d'un ensemble de données en fonction de certains filtres :
-// Un filtre "contient ..." (ex: nom contenant la chaîne de caractère 'wcs')Un filtre "commence par ..." (ex: nom commençant par 'campus')Un filtre "supérieur à ..." (ex: date supérieure à 18/10/2010)
-//     Une route par type de filtre
-//     GET - Récupération de données ordonnées (ascendant, descendant)L'ordre sera passé en tant que paramètre de la route
-router.get('/quotes', (req, res) => {
-  let slqReq = 'SELECT `id`, `timestamp`, `author_id`, `quotetext`, `validated`, `rank` FROM quote';
+//  7. POST - Sauvegarde d'une nouvelle entité
 
-  // filters
-  if (req.query.contains) slqReq += ` WHERE quotetext LIKE '%${req.query.contains}%'`;
-  if (req.query.start) slqReq += ` WHERE quotetext LIKE '${req.query.start}%'`;
-  if (req.query.older) slqReq += ` WHERE timestamp < ${req.query.older}`;
-
-  // sorting
-  if (req.query.sort) slqReq += ` ORDER BY ${req.query.sort.split(',').join(' ')}`;
-
-  db.query(slqReq, (err, results) => {
-    if (err) {
-      res.status(500).send("Can't get quotes !");
-    } else {
-      res.status(200).send(results);
-    }
-  });
+router.post("/quotes", (req, res) => {
+    let slqReq = "INSERT INTO `quote` SET ?;";
+    db.query(slqReq, [req.body], (err, results) => {
+        if (err) {
+            console.log(err);
+            res.status(500).send("Can't post quote !");
+        } else {
+            res.status(200).send("Your new quote is posted (id: " + results.insertId + ").");
+        }
+    });
 });
 
-//     POST - Sauvegarde d'une nouvelle entité
+//  8. PUT - Modification d'une entité
 
-//     PUT - Modification d'une entité
+router.put("/quotes/:id(\\d+)", (req, res) => {
+    let slqReq = "UPDATE `quote` SET ? WHERE id = ?;";
+    db.query(slqReq, [req.body, req.params.id], (err, results) => {
+        if (err) {
+            console.log(err);
+            res.status(500).send("Can't update quote !");
+        } else {
+            res.status(200).send("Your quote is updated.");
+        }
+    });
+});
 
-//     PUT - Toggle du booléen
+// 9. PUT - Toggle du booléen
+router.put("/quotes/:id(\\d+)/toggle-validated", (req, res) => {
+    let slqReq = "UPDATE `quote` SET validated = !validated WHERE id = ?;";
+    db.query(slqReq, [req.params.id], (err, results) => {
+        if (err) {
+            console.log(err);
+            res.status(500).send("Can't toggle validated quote !");
+        } else {
+            res.status(200).send("Your quote validated is toggled.");
+        }
+    });
+});
 
-//     DELETE - Suppression d'une entité
+//  10. DELETE - Suppression d'une entité
 
-//     DELETE - Suppression de toutes les entités dont le booléen est false
+router.delete("/quotes/:id(\\d+)", (req, res) => {
+    let slqReq = "DELETE FROM `quote` WHERE id = ?";
+    db.query(slqReq, [req.params.id], (err, results) => {
+        if (err) {
+            res.status(500).send("Can't delete quote !");
+        } else {
+            res.status(200).send("Quote id " + req.params.id + " deleted.");
+        }
+    });
+});
+
+// 11. DELETE - Suppression de toutes les entités dont le booléen est false
+
+router.delete("/quotes/del-unvalidated", (req, res) => {
+    let slqReq = "DELETE FROM `quote` WHERE validated = 0";
+    db.query(slqReq, (err, results) => {
+        if (err) {
+            res.status(500).send("Can't delete unvalidated quotes !");
+        } else {
+            res.status(200).send(results.affectedRows + " quote(s) deleted.");
+        }
+    });
+});
 
 module.exports = router;

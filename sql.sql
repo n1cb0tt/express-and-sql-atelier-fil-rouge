@@ -9,4 +9,4 @@ CREATE TABLE `quotes`.`quote` (
   `validated` TINYINT(1) NOT NULL,
   `rank` INT,
   PRIMARY KEY (`id`)
-);
+);  
